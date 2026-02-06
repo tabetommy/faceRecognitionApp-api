@@ -79,7 +79,7 @@ const verifyToken = (req, res, next) => {
 
 app.get('/',(req,res)=>{
     // res.send(database.users)
-    res.send('Face Recognition API is running');
+    res.send('Face Recognition API is running, test 1git add .');
 })
 
 
