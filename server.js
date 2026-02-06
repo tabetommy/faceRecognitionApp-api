@@ -54,6 +54,29 @@ const loginSchema = z.object({
 app.use(bodyParser.json());
 app.use(cors(corsOptions));
 
+const verifyToken = (req, res, next) => {
+    // 1. Get the token from the header (format: "Bearer <token>")
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json('Access denied. No token provided.');
+    }
+
+    try {
+        // 2. Verify the token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // 3. Attach user info to the request object so the route can use it
+        req.user = decoded; 
+        
+        // 4. Move to the next function (the actual route)
+        next();
+    } catch (err) {
+        res.status(403).json('Invalid or expired token.');
+    }
+};
+
 app.get('/',(req,res)=>{
     // res.send(database.users)
     res.send('Face Recognition API is running');
@@ -166,7 +189,7 @@ app.post('/signin', async (req, res) => {
 });
 
 
-app.post('/imageurl', (req, res) => {
+app.post('/imageurl',verifyToken, (req, res) => {
   const { input } = req.body;
   
   const raw = JSON.stringify({
@@ -201,6 +224,33 @@ app.post('/imageurl', (req, res) => {
       res.json(data);
     })
     .catch(err => res.status(400).json('unable to work with API'));
+});
+
+app.put('/image',verifyToken, async (req, res) => {
+    const { username } = req.body;
+
+    try {
+        // 1. Update the count in TiDB
+        await db.execute(
+            'UPDATE users SET entries = entries + 1 WHERE username = ?',
+            [username]
+        );
+
+        // 2. Get the updated count to send back to the UI
+        const [rows] = await db.execute(
+            'SELECT entries FROM users WHERE username = ?',
+            [username]
+        );
+
+        if (rows.length > 0) {
+            res.json(rows[0].entries);
+        } else {
+            res.status(404).json('User not found');
+        }
+    } catch (err) {
+        console.error("Update Error:", err);
+        res.status(500).json('Unable to update entries');
+    }
 });
 
 app.listen(PORT,'0.0.0.0',()=>{
