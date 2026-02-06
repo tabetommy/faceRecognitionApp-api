@@ -1,7 +1,8 @@
+require('dotenv').config();
 const express=require('express');
 const bodyParser=require("body-parser");
-const bcrypt=require("bcrypt-nodejs");
-const Clarifai=require("clarifai");
+const bcrypt=require('bcryptjs');
+const mysql = require('mysql2/promise'); 
 
 const cors= require("cors");
 const corsOptions ={
@@ -9,17 +10,17 @@ const corsOptions ={
     credentials:true,           
     optionSuccessStatus:200,
  }
- const knex = require('knex')
-//  const db=knex({
-//     client: 'pg',
-//     connection: {
-//       host : '127.0.0.1',
-//       port : 5432,
-//       user : 'postgres',
-//       password : 'test',
-//       database : 'faceReg'
-//     }
-//   }); 
+
+ const db = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 4000,
+  ssl: {
+        rejectUnauthorized: true // Node.js uses built-in CAs, so this works out of the box
+    }
+    });
  
 const app= express();
 // Use the port Render gives you, or default to 3000 for local testing
@@ -56,36 +57,43 @@ app.get('/',(req,res)=>{
 //  .catch(err=>res.status(400).json('Wrong credentials'))
 // })
 
-// app.post('/register', (req, res)=>{
-//     const{email,name,password}= req.body;
-//     if(!name||!email||!password){
-//         return res.status(400).json('Wrong form submission')
-//     }
-//     const hash=bcrypt.hashSync(password)
-//     db.transaction(trx=>{
-//         trx.insert({
-//             hash:hash,
-//             email:email
-//         })
-//         .into('login')
-//         .returning('email')
-//         .then(loginEmail=>{
-//             trx('users')
-//             .returning('*')
-//             .insert({
-//                 email:loginEmail[0],
-//                 name:name,
-//                 joined:new Date()
-//             })
-//             .then(user=>{
-//                 res.json(user[0])
-//         })
-//     })
-//     .then(trx.commit)
-//     .catch(trx.rollback)
-//     }) 
-//     .catch(err=>res.status(400).json('Unable to regiter')) 
-// })
+app.post('/register', async (req, res) => {
+    console.log(req.body)
+    const { username, password } = req.body;
+
+    // 1. Basic Validation
+    if (!username || !password) {
+        return res.status(400).json('Username and password are required');
+    }
+
+    // 2. Hash Password (never store plain text!)
+    const hash = bcrypt.hashSync(password, 10);
+
+    try {
+        // 3. Insert into TiDB
+       // Destructuring [result] only works with mysql2/promise
+        const [result] = await db.execute(
+            'INSERT INTO users (username, password) VALUES (?, ?)',
+            [username, hash] // 'hash' is your variable, 'password' is the DB column
+        );
+
+        // 4. Return success (don't send the hash back to the user)
+        res.json({
+            id: result.insertId,
+            username: username,
+            joined: new Date()
+        });
+
+    } catch (err) {
+        // Handle unique constraint violation (if username already exists)
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json('Username is already taken');
+        }
+        
+        console.error("Registration Error:", err);
+        res.status(500).json('Unable to register at this time');
+    }
+});
 
 // app.get('/profile/:id',(req,res)=>{
 //     const{id}=req.params;
@@ -112,14 +120,7 @@ app.get('/',(req,res)=>{
 //     .catch(err=>res.status(400).json('unable to get entries'))
 // })
 
-// app.post('/imageurl', (req,res)=>{
-//     clarifaiKey.models
-//     .predict(Clarifai.FACE_DETECT_MODEL,req.body.input)
-//     .then(data=>{
-//         res.json(data)
-//     })
-//     .catch(err=>res.status(400).json('Unable to fetch API'))
-// })
+
 
 app.post('/imageurl', (req, res) => {
   const { input } = req.body;
@@ -144,7 +145,7 @@ app.post('/imageurl', (req, res) => {
     method: 'POST',
     headers: {
       'Accept': 'application/json',
-      'Authorization': 'Key ' + 'f9ea72f41cf34b1a8187d080242f5990'
+      'Authorization': 'Key ' + process.env.CLARIFAI_API_KEY
     },
     body: raw
   };
