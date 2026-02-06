@@ -4,6 +4,7 @@ const bodyParser=require("body-parser");
 const bcrypt=require('bcryptjs');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken'); 
+const { z } = require('zod');
 
 const cors= require("cors");
 const corsOptions ={
@@ -31,6 +32,25 @@ const PORT = process.env.PORT || 3000;
 // Use a secret from your .env file!
 const JWT_SECRET = process.env.JWT_SECRET ;
 
+const registerSchema = z.object({
+  username: z.string()
+    .min(3, "Username must be at least 3 characters")
+    .max(20, "Username too long"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .refine((val) => /[A-Z]/.test(val), {
+      message: "Password must contain at least one capital letter",
+    })
+    .refine((val) => /[!@#$%^&*]/.test(val), {
+      message: "Password must contain at least one special character",
+    }),
+});
+
+const loginSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
 app.use(bodyParser.json());
 app.use(cors(corsOptions));
 
@@ -41,7 +61,14 @@ app.get('/',(req,res)=>{
 
 
 app.post('/register', async (req, res) => {
-    console.log(req.body)
+    const result = registerSchema.safeParse(req.body);
+
+    if (!result.success) {
+        // Zod returns a deeply nested error object; we flatten it for the frontend
+        return res.status(400).json({ 
+            error: result.error.issues[0].message 
+        });
+    }
     const { username, password } = req.body;
 
     // 1. Basic Validation
@@ -81,6 +108,14 @@ app.post('/register', async (req, res) => {
 
 
 app.post('/signin', async (req, res) => {
+    const result = loginSchema.safeParse(req.body);
+
+    if (!result.success) {
+        // Zod returns a deeply nested error object; we flatten it for the frontend
+        return res.status(400).json({ 
+            error: result.error.issues[0].message 
+        });
+    }
     const { username, password } = req.body;
 
     if (!username || !password) {
