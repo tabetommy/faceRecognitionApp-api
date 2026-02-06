@@ -10,7 +10,7 @@ const rateLimit = require('express-rate-limit');
 
 const cors= require("cors");
 const corsOptions ={
-    origin:'https://facerecognitionapp-api-zzin.onrender.com', 
+    origin:'http://localhost:3001', 
     methods: ['GET', 'POST', 'PUT'],
     credentials:true,           
     optionSuccessStatus:200,
