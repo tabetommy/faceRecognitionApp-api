@@ -5,10 +5,13 @@ const bcrypt=require('bcryptjs');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken'); 
 const { z } = require('zod');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const cors= require("cors");
 const corsOptions ={
-    origin:'*', 
+    origin:'https://facerecognitionapp-api-zzin.onrender.com/', 
+    methods: ['GET', 'POST', 'PUT'],
     credentials:true,           
     optionSuccessStatus:200,
  }
@@ -32,6 +35,7 @@ const PORT = process.env.PORT || 3000;
 // Use a secret from your .env file!
 const JWT_SECRET = process.env.JWT_SECRET ;
 
+// Zod Schemas for input validation
 const registerSchema = z.object({
   username: z.string()
     .min(3, "Username must be at least 3 characters")
@@ -40,6 +44,9 @@ const registerSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .refine((val) => /[A-Z]/.test(val), {
       message: "Password must contain at least one capital letter",
+    })
+    .refine((val) => /[0-9]/.test(val), {
+    message: "Password must contain at least one number",
     })
     .refine((val) => /[!@#$%^&*]/.test(val), {
       message: "Password must contain at least one special character",
@@ -51,8 +58,18 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  validate: { xForwardedForHeader: false }, // Disables the strict validation check for dev
+  message: { error: 'Too many attempts' }
+});
+
+
+// Middleware
 app.use(bodyParser.json());
 app.use(cors(corsOptions));
+app.use(helmet());
 
 const verifyToken = (req, res, next) => {
     // 1. Get the token from the header (format: "Bearer <token>")
@@ -77,13 +94,15 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+//Begin Routes
+
 app.get('/',(req,res)=>{
     // res.send(database.users)
-    res.send('Face Recognition API is running, test 1git add .');
+    res.send('Face Recognition API is running, test 2');
 })
 
 
-app.post('/register', async (req, res) => {
+app.post('/register',authLimiter,async (req, res) => {
     const result = registerSchema.safeParse(req.body);
 
     if (!result.success) {
@@ -109,13 +128,22 @@ app.post('/register', async (req, res) => {
             'INSERT INTO users (username, password) VALUES (?, ?)',
             [username, hash] // 'hash' is your variable, 'password' is the DB column
         );
+      
+         const token = jwt.sign(
+                { id: result.insertId, username: username },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
 
         // 4. Return success (don't send the hash back to the user)
         res.json({
+            token: token,
+            user: {
             id: result.insertId,
             username: username,
-            joined: new Date()
-        });
+            joined: new Date(),
+            entries:0
+        }});
 
     } catch (err) {
         // Handle unique constraint violation (if username already exists)
@@ -130,7 +158,7 @@ app.post('/register', async (req, res) => {
 
 
 
-app.post('/signin', async (req, res) => {
+app.post('/signin',authLimiter, async (req, res) => {
     const result = loginSchema.safeParse(req.body);
 
     if (!result.success) {
@@ -176,7 +204,8 @@ app.post('/signin', async (req, res) => {
                     id: user.id,
                     username: user.username,
                     entries: user.entries, // For your tracking system
-                    joined: user.joined
+                    joined: user.joined,
+                    entries: user.entries
                 }
             });
         } else {
@@ -250,6 +279,32 @@ app.put('/image',verifyToken, async (req, res) => {
     } catch (err) {
         console.error("Update Error:", err);
         res.status(500).json('Unable to update entries');
+    }
+});
+
+// This route is called automatically when the React app refreshes
+app.get('/verify', verifyToken, async (req, res) => {
+    try {
+        // req.user was populated by the verifyToken middleware
+        const userId = req.user.id;
+
+        // Fetch the latest user data from TiDB
+        const [rows] = await db.execute(
+            'SELECT id, username, entries, created_at FROM users WHERE id = ?',
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'User no longer exists' });
+        }
+
+        // Send the user data back to the frontend
+        // We don't send the password back for security reasons
+        res.json(rows[0]);
+        
+    } catch (err) {
+        console.error('Verification error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
