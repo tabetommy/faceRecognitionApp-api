@@ -2,7 +2,8 @@ require('dotenv').config();
 const express=require('express');
 const bodyParser=require("body-parser");
 const bcrypt=require('bcryptjs');
-const mysql = require('mysql2/promise'); 
+const mysql = require('mysql2/promise');
+const jwt = require('jsonwebtoken'); 
 
 const cors= require("cors");
 const corsOptions ={
@@ -21,10 +22,14 @@ const corsOptions ={
         rejectUnauthorized: true // Node.js uses built-in CAs, so this works out of the box
     }
     });
+
+
  
 const app= express();
 // Use the port Render gives you, or default to 3000 for local testing
 const PORT = process.env.PORT || 3000;
+// Use a secret from your .env file!
+const JWT_SECRET = process.env.JWT_SECRET ;
 
 app.use(bodyParser.json());
 app.use(cors(corsOptions));
@@ -34,28 +39,6 @@ app.get('/',(req,res)=>{
     res.send('Face Recognition API is running');
 })
 
-// app.post('/signin', (req,res)=>{
-//     const{email,password}= req.body;
-//     if(!email||!password){
-//         return res.status(400).json('Wrong form submission')
-//     }
-//  db.select('email', 'hash').from('login')
-//  .where('email','=',req.body.email)
-//  .then(data=>{
-//     const isValid=bcrypt.compareSync(password, data[0].hash)
-//     if(isValid){
-//         return db.select('*').from('users')
-//         .where('email','=',email)
-//         .then(user=>{
-//             res.json(user[0])
-//         })
-//         .catch(err=>res.status(400).json('Unable to get user'))
-//     }else{
-//         res.status(400).json('Wrong credentials')
-//     }
-//  })
-//  .catch(err=>res.status(400).json('Wrong credentials'))
-// })
 
 app.post('/register', async (req, res) => {
     console.log(req.body)
@@ -95,31 +78,57 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// app.get('/profile/:id',(req,res)=>{
-//     const{id}=req.params;
-//     db.select('*').from('users')
-//     .where({id:id})
-//     .then(user=>{
-//         if(user.length){
-//             res.json(user[0])
-//         } else{
-//             res.status(400).json('Error getting data')
-//         }    
-//     })
-   
-// })
 
-// app.put('/image', (req,res)=>{
-//     const{id}=req.body;
-//     db('users').where('id','=',id)
-//     .increment('entries',1)
-//     .returning('entries')
-//     .then(entries=>{
-//         res.json(entries[0])
-//     })
-//     .catch(err=>res.status(400).json('unable to get entries'))
-// })
 
+app.post('/signin', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json('Missing credentials');
+    }
+
+    try {
+        // 1. Look for user in TiDB
+        const [rows] = await db.execute(
+            'SELECT * FROM users WHERE username = ?',
+            [username]
+        );
+
+        if (rows.length === 0) {
+            return res.status(400).json('Invalid username or password');
+        }
+
+        const user = rows[0];
+
+        // 2. Compare hashed password
+        const isValid = bcrypt.compareSync(password, user.password);
+
+        if (isValid) {
+            // 3. Create a JWT Token
+            const token = jwt.sign(
+                { id: user.id, username: user.username },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
+
+            // 4. Send back user info AND the token
+            return res.json({
+                token: token,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    entries: user.entries, // For your tracking system
+                    joined: user.joined
+                }
+            });
+        } else {
+            res.status(400).json('Invalid username or password');
+        }
+    } catch (err) {
+        console.error("Signin Error:", err);
+        res.status(500).json('Error logging in');
+    }
+});
 
 
 app.post('/imageurl', (req, res) => {
