@@ -2,9 +2,7 @@ const express=require('express');
 const bodyParser=require("body-parser");
 const bcrypt=require("bcrypt-nodejs");
 const Clarifai=require("clarifai");
-const clarifaiKey= new Clarifai.App({
-    apiKey: "a9613b4d271146afae975180c8a77eb1",
-   });
+
 const cors= require("cors");
 const corsOptions ={
     origin:'*', 
@@ -24,6 +22,8 @@ const corsOptions ={
   }); 
  
 const app= express();
+// Use the port Render gives you, or default to 3000 for local testing
+const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 app.use(cors(corsOptions));
@@ -111,16 +111,53 @@ app.put('/image', (req,res)=>{
     .catch(err=>res.status(400).json('unable to get entries'))
 })
 
-app.post('/imageurl', (req,res)=>{
-    clarifaiKey.models
-    .predict(Clarifai.FACE_DETECT_MODEL,req.body.input)
-    .then(data=>{
-        res.json(data)
-    })
-    .catch(err=>res.status(400).json('Unable to fetch API'))
-})
+// app.post('/imageurl', (req,res)=>{
+//     clarifaiKey.models
+//     .predict(Clarifai.FACE_DETECT_MODEL,req.body.input)
+//     .then(data=>{
+//         res.json(data)
+//     })
+//     .catch(err=>res.status(400).json('Unable to fetch API'))
+// })
 
-app.listen(3000,()=>{
-    console.log('app is running on port 3000')
+app.post('/imageurl', (req, res) => {
+  const { input } = req.body;
+  
+  const raw = JSON.stringify({
+    "user_app_id": {
+      "user_id": "clarifai", 
+      "app_id": "main"  
+    },
+    "inputs": [
+      {
+        "data": {
+          "image": {
+            "url": input
+          }
+        }
+      }
+    ]
+  });
+
+  const requestOptions = {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': 'Key ' + 'f9ea72f41cf34b1a8187d080242f5990'
+    },
+    body: raw
+  };
+
+  // FIXED URL: Points to the 'clarifai' user and 'main' app where the model lives
+  fetch("https://api.clarifai.com/v2/models/face-detection/outputs", requestOptions)
+    .then(response => response.json())
+    .then(data => {
+      res.json(data);
+    })
+    .catch(err => res.status(400).json('unable to work with API'));
+});
+
+app.listen(PORT,'0.0.0.0',()=>{
+    console.log(`app is running on port ${PORT}`)
 })
 

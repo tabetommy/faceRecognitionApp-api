@@ -12,8 +12,10 @@ const SUPPORTED_CLIENTS = Object.freeze(
     'mysql2',
     'oracledb',
     'postgres',
+    'pgnative',
     'redshift',
     'sqlite3',
+    'cockroachdb',
   ].concat(Object.keys(CLIENT_ALIASES))
 );
 
@@ -23,8 +25,10 @@ const DRIVER_NAMES = Object.freeze({
   MySQL2: 'mysql2',
   Oracle: 'oracledb',
   PostgreSQL: 'pg',
+  PgNative: 'pgnative',
   Redshift: 'pg-redshift',
   SQLite: 'sqlite3',
+  CockroachDB: 'cockroachdb',
 });
 
 const POOL_CONFIG_OPTIONS = Object.freeze([
