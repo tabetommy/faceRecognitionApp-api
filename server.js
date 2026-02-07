@@ -10,7 +10,7 @@ const rateLimit = require('express-rate-limit');
 
 const cors= require("cors");
 const corsOptions ={
-    origin:['http://localhost:3000','https://tabetommy.github.io/facerecognition'], 
+    origin:['http://localhost:3000','https://tabetommy.github.io'], 
     methods: ['GET', 'POST', 'PUT'],
     credentials:true,           
     optionSuccessStatus:200,
